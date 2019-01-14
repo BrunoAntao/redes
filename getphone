@@ -3,17 +3,17 @@ while test $# -gt 0; do
         case "$1" in
                 -del)
                         shift
-                        python3 client.py "del" $1 $2
+                        python3 client.py "del" "$1" $2
                         break
                         ;;
                 -set)
                         shift
-                        python3 client.py "set" $1 $2
+                        python3 client.py "set" "$1" $2
                         break
                         ;;
                 *)      
                         
-                        python3 client.py "get" $1
+                        python3 client.py "get" "$1"
                         break
                         ;;
         esac

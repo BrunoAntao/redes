@@ -6,6 +6,9 @@ import secrets
 from datetime import datetime
 import traceback  # para informação de excepções
 
+from Crypto.Cipher import AES
+
+
 SOCKET_LIST = []    # lista de sockets abertos
 RECV_BUFFER = 4096  # valor recomendado na doc. do python
 PORT = 5000
@@ -76,64 +79,64 @@ def get_number(args):
 
 def set_number(args):
 
-    if len(args) == 3 and check_session(args[2]):
+    #if len(args) == 3 and check_session(args[2]):
 
-        if args[0] in NUMBERS:
-            NUMBERS[args[0]].append(args[1])
-        else:
-            NUMBERS[args[0]] = []
-            NUMBERS[args[0]].append(args[1])
-
-        write_to_file(NUMBERS, nfile)
-
-        return "NUMBERSET " + args[0] + " " + args[1] + '\n'
-
+    if args[0] in NUMBERS:
+        NUMBERS[args[0]].append(args[1])
     else:
+        NUMBERS[args[0]] = []
+        NUMBERS[args[0]].append(args[1])
+
+    write_to_file(NUMBERS, nfile)
+
+    return "NUMBERSET " + args[0] + " " + args[1] + '\n'
+
+    ''' else:
         
-        return "AUTHFAIL \n"
+        return "AUTHFAIL \n" '''
 
 def del_number(args):
 
-    if check_session(args[2]):
+    #if check_session(args[2]):
 
-        if args[0] in NUMBERS:
+    if args[0] in NUMBERS:
 
-            if args[1] in NUMBERS[args[0]]:
+        if args[1] in NUMBERS[args[0]]:
 
-                NUMBERS[args[0]].remove(args[1])
-                write_to_file(NUMBERS, nfile)
+            NUMBERS[args[0]].remove(args[1])
+            write_to_file(NUMBERS, nfile)
 
-                return "DELETED " + args[0] + " " + args[1] + '\n'
+            return "DELETED " + args[0] + " " + args[1] + '\n'
 
-            else:
-
-                return "NOTFOUND " + args[1] + '\n'
         else:
 
-            return "NOTFOUND " + args[0] + '\n'
-
+            return "NOTFOUND " + args[1] + '\n'
     else:
-        
-        return "AUTHFAIL \n"
+
+        return "NOTFOUND " + args[0] + '\n'
+
+'''  else:
+    
+    return "AUTHFAIL \n" '''
 
 def del_client(args):
 
-    if check_session(args[1]):
+    #if check_session(args[1]):
 
-        if args[0] in NUMBERS:
+    if args[0] in NUMBERS:
 
-            del NUMBERS[args[0]]
-            write_to_file(NUMBERS, nfile)
+        del NUMBERS[args[0]]
+        write_to_file(NUMBERS, nfile)
 
-            return "DELETED " + args[0] + '\n'
-
-        else:
-
-            return "NOTFOUND " + args[0] + '\n'
+        return "DELETED " + args[0] + '\n'
 
     else:
+
+        return "NOTFOUND " + args[0] + '\n'
+
+    ''' else:
         
-        return "AUTHFAIL \n"
+        return "AUTHFAIL \n" '''
 
 def reverse(args):
 
@@ -207,7 +210,26 @@ def parse_command_data(command, args):
 
     elif command == "DELETECLIENT":
 
-        token = args[len(args) - 1]
+        #token = args[len(args) - 1]
+
+        name = ""
+
+        for i in range(len(args)):
+
+            if i != len(args) - 1:
+
+                name += args[i] + " "
+            
+            else:
+
+                name += args[i]
+
+        return [name]
+
+    elif command == "SETNUMBER" or command == "DELETENUMBER":
+
+        #token = args[len(args) - 1]
+        number = args[len(args) - 1]
 
         name = ""
 
@@ -221,26 +243,7 @@ def parse_command_data(command, args):
 
                 name += args[i]
 
-        return [name, token]
-
-    elif command == "SETNUMBER" or command == "DELETENUMBER":
-
-        token = args[len(args) - 1]
-        number = args[len(args) - 2]
-
-        name = ""
-
-        for i in range(len(args) - 2):
-
-            if i != len(args) - 3:
-
-                name += args[i] + " "
-            
-            else:
-
-                name += args[i]
-
-        return [name, number, token]
+        return [name, number]
 
     else:
 
@@ -249,13 +252,18 @@ def parse_command_data(command, args):
 
 def parse_data(data, sock):
 
+    obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+
     for i in range(1,len(SOCKET_LIST)):
 
         if SOCKET_LIST[i] != sock:
 
             SOCKET_LIST[i].send(data)
 
-    msg = data.decode().rstrip()
+    
+    msg = str(obj2.decrypt(data))[2:-1].strip()
+
     nmsg = msg.split(" ")
 
     data = parse_command_data(nmsg[0], nmsg[1:])
@@ -265,9 +273,9 @@ def parse_data(data, sock):
 
     try:
 
-        result = parse_command(nmsg[0], nmsg[1:])
+        result = parse_command(nmsg[0], data)
         print(result)
-        sock.send(result.encode())
+        sock.send(obj.encrypt(result))
         print("Client %s: Message: '%s'" % (sock.getsockname(), msg))
 
     except Exception as e:
