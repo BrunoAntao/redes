@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import socket
 import select
 import pickle
@@ -68,14 +67,16 @@ def check_session(token):
 
 def get_number(args):
 
-    if args[0] in NUMBERS:
-        return "CLIENTHASNUMBERS " + " ".join(NUMBERS.get(args[0])) + '\n'
+    name = " ".join(args)
 
-    return "NOTFOUND " + args[0] + '\n'
+    if name in NUMBERS:
+        return "CLIENTHASNUMBERS " + " ".join(NUMBERS.get(name)) + '\n'
+
+    return "NOTFOUND " + name + '\n'
 
 def set_number(args):
 
-    if check_session(args[2]):
+    if len(args) == 3 and check_session(args[2]):
 
         if args[0] in NUMBERS:
             NUMBERS[args[0]].append(args[1])
@@ -96,13 +97,19 @@ def del_number(args):
     if check_session(args[2]):
 
         if args[0] in NUMBERS:
-            if(args[1] in NUMBERS[args[0]]):
+
+            if args[1] in NUMBERS[args[0]]:
+
                 NUMBERS[args[0]].remove(args[1])
                 write_to_file(NUMBERS, nfile)
+
                 return "DELETED " + args[0] + " " + args[1] + '\n'
+
             else:
+
                 return "NOTFOUND " + args[1] + '\n'
         else:
+
             return "NOTFOUND " + args[0] + '\n'
 
     else:
@@ -114,10 +121,14 @@ def del_client(args):
     if check_session(args[1]):
 
         if args[0] in NUMBERS:
+
             del NUMBERS[args[0]]
             write_to_file(NUMBERS, nfile)
+
             return "DELETED " + args[0] + '\n'
+
         else:
+
             return "NOTFOUND " + args[0] + '\n'
 
     else:
@@ -129,13 +140,19 @@ def reverse(args):
     names = []
 
     for client in NUMBERS:
+
         for number in NUMBERS[client]:
-            if(number == args[0]):
+
+            if number == args[0]:
+
                 names.append(client)
     
-    if(len(names) > 0):
+    if len(names) > 0:
+
         return "CLIENTHASNAMES " + " ".join(names) + '\n'
+
     else:
+
         return "NOTFOUND " + args[0] + '\n'
 
 def auth(args):
@@ -150,7 +167,19 @@ def auth(args):
 
             return "AUTHOK " + token + "\n"
 
-    return "AUTHFAIL \n"
+        else:
+
+            return "AUTHFAIL \n"
+
+    else:
+
+        AUTH[args[0]] = args[1]
+
+        token = str(secrets.token_bytes())
+
+        create_session(token)
+
+        return "AUTHOK " + token + "\n"
 
 def no_command(args):
 
@@ -168,15 +197,71 @@ def parse_command(argument, args):
 
     return switcher.get(argument, no_command)(args)
 
+def parse_command_data(command, args):
+
+    if command == "GETNUMBER":
+
+        name = " ".join(args)
+
+        return [name]
+
+    elif command == "DELETECLIENT":
+
+        token = args[len(args) - 1]
+
+        name = ""
+
+        for i in range(len(args) - 1):
+
+            if i != len(args) - 2:
+
+                name += args[i] + " "
+            
+            else:
+
+                name += args[i]
+
+        return [name, token]
+
+    elif command == "SETNUMBER" or command == "DELETENUMBER":
+
+        token = args[len(args) - 1]
+        number = args[len(args) - 2]
+
+        name = ""
+
+        for i in range(len(args) - 2):
+
+            if i != len(args) - 3:
+
+                name += args[i] + " "
+            
+            else:
+
+                name += args[i]
+
+        return [name, number, token]
+
+    else:
+
+        return args
+
+
 def parse_data(data, sock):
+
     for i in range(1,len(SOCKET_LIST)):
+
         if SOCKET_LIST[i] != sock:
+
             SOCKET_LIST[i].send(data)
 
     msg = data.decode().rstrip()
     nmsg = msg.split(" ")
+
+    data = parse_command_data(nmsg[0], nmsg[1:])
+
     print(nmsg[0])
-    print(nmsg[1:])
+    print(data)
 
     try:
 
