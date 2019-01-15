@@ -3,12 +3,17 @@ while test $# -gt 0; do
         case "$1" in
                 -del)
                         shift
-                        python3 client.py "del" "$1" $2
+                        python3 client.py "del" "$1" $2 $3 $4
                         break
                         ;;
                 -set)
                         shift
-                        python3 client.py "set" "$1" $2
+                        python3 client.py "set" "$1" $2 $3 $4
+                        break
+                        ;;
+                -auth)
+                        shift
+                        python3 client.py "auth" "$1" "$2"
                         break
                         ;;
                 *)      

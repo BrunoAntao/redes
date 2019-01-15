@@ -33,26 +33,35 @@ def no_response(a, args):
 
     return a + " " + " ".join(args)
 
-
-def parse_response(argument, args):
-
-    switcher = {
-
-        "AUTHOK": auth,
-        "AUTHFAIL": auth_fail,
-    }
-
-    return switcher.get(argument, no_response)(argument, args)
-
-def parse_response_noauth(command, res, payload):
+def parse_response(command, res, payload):
 
     if res == "NOTFOUND":
     
         return "Not found"
 
+    elif res == "AUTHFAIL":
+
+        return "Not authorized"
+
+    elif res == "AUTHFAILED":
+
+        return "Your ursername or password is wrong"
+
+    elif res == "AUTHOK":
+
+        return "Authed"
+
+    elif res == "AUTHED":
+
+        return "Already authed"
+
     elif command == "GETNUMBER":
 
-        return sys.argv[2] + " has number" + " ".join(payload)
+        return sys.argv[2] + " has number " + " ".join(payload)
+
+    elif command == "REVERSE":
+
+        return sys.argv[2] + " is the number for " + " ".join(payload)
 
     elif command == "SETNUMBER":
 
@@ -65,8 +74,6 @@ def parse_response_noauth(command, res, payload):
     elif command == "DELETECLIENT":
 
         return sys.argv[2] + " deleted from database"
-
-
 
 def set_number(args):
 
@@ -99,15 +106,16 @@ def parse_command(argument, args):
         "SETNUMBER": set_number,
         "DELETENUMBER": del_number,
         "DELETECLIENT": del_client,
-        "GETNUMBER": get_number
+        "GETNUMBER": get_number,
+        "REVERSE": get_number
     }
 
     return switcher.get(argument, no_command)(args)
 
 def parse_arg(arg):
 
-    if arg[0] == "del" and len(arg) == 3:
-
+    if arg[0] == "del" and len(arg) == 5:
+        
         return "DELETENUMBER"
 
     elif arg[0] == "del":
@@ -120,24 +128,22 @@ def parse_arg(arg):
 
     elif arg[0] == "get":
 
-        return "GETNUMBER"
+        try:
+            
+            eval(arg[1])
+            return "REVERSE"
+
+        except Exception:
+            
+            return "GETNUMBER"
+
+    elif arg[0] == "auth":
+
+        return "AUTH"
 
     else:
 
         return "NOTFOUND"
-
-def first_auth(sock):
-
-    command = "AUTH nuni ola"
-
-    sock.send(command.encode())
-
-    data = " "
-    data = sock.recv(100)
-
-    msg = data.decode().rstrip().split(" ")
-
-    parse_response(msg[0], msg[1:])
 
 if __name__ == "__main__":
 
@@ -146,8 +152,6 @@ if __name__ == "__main__":
     sock.connect(server_address)
 
     try:
-
-        #first_auth(sock)
         
         command = parse_arg(sys.argv[1:])
         protocol =  command + " " + parse_command(command, sys.argv[2:])
@@ -158,9 +162,7 @@ if __name__ == "__main__":
         data = sock.recv(4096)
         msg = str(obj2.decrypt(data))[2:-3].split(" ")
 
-        print(parse_response_noauth(command, msg[0], msg[1:]))
-
-        #print(parse_response(msg[0], msg[1:]))
+        print(parse_response(command, msg[0], msg[1:]))
 
     except Exception as e:  # excepção ao ler o socket, o cliente fechou ou morreu
 

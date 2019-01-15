@@ -44,29 +44,6 @@ def write_to_file(data, filename):
 
 NUMBERS = read_file(nfile)
 AUTH = read_file(afile)
-SESSIONS = {}
-
-def create_session(token):
-
-    SESSIONS[token] = datetime.now()
-
-def check_session(token):
-
-    if token in SESSIONS:
-
-        time = (datetime.now() - SESSIONS[token]).total_seconds()
-
-        if time < 40:
-
-            print(time)
-
-            return True
-
-        else:
-
-            del SESSIONS[token]
-
-    return False
 
 def get_number(args):
 
@@ -79,64 +56,64 @@ def get_number(args):
 
 def set_number(args):
 
-    #if len(args) == 3 and check_session(args[2]):
+    if check_auth(args[2:]):
 
-    if args[0] in NUMBERS:
-        NUMBERS[args[0]].append(args[1])
+        if args[0] in NUMBERS:
+            NUMBERS[args[0]].append(args[1])
+        else:
+            NUMBERS[args[0]] = []
+            NUMBERS[args[0]].append(args[1])
+
+        write_to_file(NUMBERS, nfile)
+
+        return "NUMBERSET " + args[0] + " " + args[1] + '\n'
+
     else:
-        NUMBERS[args[0]] = []
-        NUMBERS[args[0]].append(args[1])
-
-    write_to_file(NUMBERS, nfile)
-
-    return "NUMBERSET " + args[0] + " " + args[1] + '\n'
-
-    ''' else:
         
-        return "AUTHFAIL \n" '''
+        return "AUTHFAIL \n"
 
 def del_number(args):
 
-    #if check_session(args[2]):
+    if check_auth(args[2:]):
 
-    if args[0] in NUMBERS:
+        if args[0] in NUMBERS:
 
-        if args[1] in NUMBERS[args[0]]:
+            if args[1] in NUMBERS[args[0]]:
 
-            NUMBERS[args[0]].remove(args[1])
-            write_to_file(NUMBERS, nfile)
+                NUMBERS[args[0]].remove(args[1])
+                write_to_file(NUMBERS, nfile)
 
-            return "DELETED " + args[0] + " " + args[1] + '\n'
+                return "DELETED " + args[0] + " " + args[1] + '\n'
 
+            else:
+
+                return "NOTFOUND " + args[1] + '\n'
         else:
 
-            return "NOTFOUND " + args[1] + '\n'
+            return "NOTFOUND " + args[0] + '\n'
+
     else:
-
-        return "NOTFOUND " + args[0] + '\n'
-
-'''  else:
     
-    return "AUTHFAIL \n" '''
+        return "AUTHFAIL \n"
 
 def del_client(args):
 
-    #if check_session(args[1]):
+    if check_auth(args[1:]):
 
-    if args[0] in NUMBERS:
+        if args[0] in NUMBERS:
 
-        del NUMBERS[args[0]]
-        write_to_file(NUMBERS, nfile)
+            del NUMBERS[args[0]]
+            write_to_file(NUMBERS, nfile)
 
-        return "DELETED " + args[0] + '\n'
+            return "DELETED " + args[0] + '\n'
+
+        else:
+
+            return "NOTFOUND " + args[0] + '\n'
 
     else:
 
-        return "NOTFOUND " + args[0] + '\n'
-
-    ''' else:
-        
-        return "AUTHFAIL \n" '''
+        return "AUTHFAIL \n"
 
 def reverse(args):
 
@@ -158,38 +135,36 @@ def reverse(args):
 
         return "NOTFOUND " + args[0] + '\n'
 
+def check_auth(args):
+
+    return args[0] in AUTH and AUTH[args[0]]['password'] == args[1]
+
 def auth(args):
 
     if args[0] in AUTH:
 
-        if AUTH[args[0]] == args[1]:
+        if AUTH[args[0]]['password'] == args[1]:
 
-            token = str(secrets.token_bytes())
-
-            create_session(token)
-
-            return "AUTHOK " + token + "\n"
+            return "AUTHED\n"
 
         else:
 
-            return "AUTHFAIL \n"
+            return "AUTHFAILED\n"
 
     else:
 
-        AUTH[args[0]] = args[1]
+        AUTH[args[0]] = { 'password': args[1], 'ttl': 60 }
 
-        token = str(secrets.token_bytes())
-
-        create_session(token)
-
-        return "AUTHOK " + token + "\n"
+        return "AUTHOK\n"
 
 def no_command(args):
 
     return 'INVALIDCOMMAND\n'
 
 def parse_command(argument, args):
+
     switcher = {
+
         "GETNUMBER": get_number,
         "SETNUMBER": set_number,
         "DELETENUMBER": del_number,
@@ -210,13 +185,14 @@ def parse_command_data(command, args):
 
     elif command == "DELETECLIENT":
 
-        #token = args[len(args) - 1]
+        password = args[-1]
+        username = args[-2]
 
         name = ""
 
-        for i in range(len(args)):
+        for i in range(len(args) - 2):
 
-            if i != len(args) - 1:
+            if i != len(args) - 3:
 
                 name += args[i] + " "
             
@@ -224,18 +200,20 @@ def parse_command_data(command, args):
 
                 name += args[i]
 
-        return [name]
+        return [name, username, password]
 
     elif command == "SETNUMBER" or command == "DELETENUMBER":
 
-        #token = args[len(args) - 1]
-        number = args[len(args) - 1]
+        number = args[-3]
+
+        password = args[-1]
+        username = args[-2]
 
         name = ""
 
-        for i in range(len(args) - 1):
+        for i in range(len(args) - 3):
 
-            if i != len(args) - 2:
+            if i != len(args) - 4:
 
                 name += args[i] + " "
             
@@ -243,7 +221,7 @@ def parse_command_data(command, args):
 
                 name += args[i]
 
-        return [name, number]
+        return [name, number, username, password]
 
     else:
 
@@ -284,6 +262,7 @@ def parse_data(data, sock):
         sock.send("INVALIDCOMMAND\n".encode())
           
 if __name__ == "__main__":
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(("0.0.0.0", PORT))  # aceita ligações de qualquer lado
@@ -309,6 +288,12 @@ if __name__ == "__main__":
         if len(rsocks) == 0: # timeout
             timecount += 5
 
+            for k, _ in AUTH.items():
+
+                AUTH[k]['ttl'] -= 5
+
+            AUTH = { k: v for k, v in AUTH.items() if v['ttl'] != 0 }
+            
             if timecount % 60 == 0:  # passou um minuto
                 print("Timeout on select() -> %d secs" % (timecount))
                 timecount = 0
