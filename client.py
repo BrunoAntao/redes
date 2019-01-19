@@ -57,11 +57,23 @@ def parse_response(command, res, payload):
 
     elif command == "GETNUMBER":
 
-        return sys.argv[2] + " has number " + " ".join(payload)
+        res = ''
+
+        for i in payload:
+
+            res += sys.argv[2] + " has number " + i + "\n"
+
+        return res[:-1]
 
     elif command == "REVERSE":
 
-        return sys.argv[2] + " is the number for " + " ".join(payload)
+        res = ''
+
+        for i in payload:
+
+            res += sys.argv[2] + " is the number for " + i + "\n"
+
+        return res[:-1]
 
     elif command == "SETNUMBER":
 
@@ -155,7 +167,7 @@ if __name__ == "__main__":
         
         command = parse_arg(sys.argv[1:])
         protocol =  command + " " + parse_command(command, sys.argv[2:])
-
+        
         ciphertext = obj.encrypt(protocol)
         sock.send(ciphertext)
 

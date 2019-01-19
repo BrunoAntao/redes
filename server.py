@@ -13,7 +13,6 @@ SOCKET_LIST = []    # lista de sockets abertos
 RECV_BUFFER = 4096  # valor recomendado na doc. do python
 PORT = 5000
 
-afile = 'auth.db'
 nfile = 'numbers.db'
 
 def read_file(filename):
@@ -24,7 +23,9 @@ def read_file(filename):
 
             print('Opened file for read')
             
-            return pickle.load(f)
+            table = pickle.load(f)
+
+            return table
 
     else:
 
@@ -43,14 +44,14 @@ def write_to_file(data, filename):
         pickle.dump(data, f)
 
 NUMBERS = read_file(nfile)
-AUTH = read_file(afile)
+AUTH = {}
 
 def get_number(args):
 
     name = " ".join(args)
 
     if name in NUMBERS:
-        return "CLIENTHASNUMBERS " + " ".join(NUMBERS.get(name)) + '\n'
+        return "CLIENTHASNUMBERS " + " ".join(NUMBERS.get(name)) + "\n"
 
     return "NOTFOUND " + name + '\n'
 
