@@ -16,8 +16,7 @@ PORT = 5000
 
 nfile = 'numbers.db'
 
-NUMBERS = read_file(nfile)
-AUTH = {}
+
 
 def read_file(filename):
 
@@ -38,6 +37,9 @@ def read_file(filename):
             print('Created file')
 
             return {}
+
+NUMBERS = read_file(nfile)
+AUTH = {}
 
 def write_to_file(data, filename):
 
@@ -194,13 +196,6 @@ def parse_data(data, sock):
     obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
     obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
-    for i in range(1,len(SOCKET_LIST)):
-
-        if SOCKET_LIST[i] != sock:
-
-            SOCKET_LIST[i].send(data)
-
-    
     msg = str(obj2.decrypt(data))[2:-1].strip()
     nmsg = shlex.split(msg)
 
