@@ -1,39 +1,25 @@
 import socket
 import select
-
+import shlex
 from Crypto.Cipher import AES
 
 import ast
 import sys
 
-obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
-obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
-
 addr = '127.0.0.1'
 port = 5000
 
-SESSION = ""
-
-
-def auth(a, args):
-
-    global SESSION
-
-    SESSION = args[0]
-
-    return "AUTHORIZED"
-
+SESSION = []
 
 def auth_fail(a, args):
 
     return "UNAUTHORIZED"
 
-
 def no_response(a, args):
 
     return a + " " + " ".join(args)
 
-def parse_response(command, res, payload):
+def parse_response(command, res, payload, read):
 
     if res == "NOTFOUND":
     
@@ -61,7 +47,7 @@ def parse_response(command, res, payload):
 
         for i in payload:
 
-            res += sys.argv[2] + " has number " + i + "\n"
+            res += read[1] + " has number " + i + "\n"
 
         return res[:-1]
 
@@ -71,44 +57,56 @@ def parse_response(command, res, payload):
 
         for i in payload:
 
-            res += sys.argv[2] + " is the number for " + i + "\n"
+            res += read[1] + " is the number for " + i + "\n"
 
         return res[:-1]
 
     elif command == "SETNUMBER":
 
-        return sys.argv[2] + " number set to " + sys.argv[3]
+        return read[2] + " number set to " + read[3]
 
     elif command == "DELETENUMBER":
 
-        return sys.argv[2] + " number " + sys.argv[3] + " deleted from database"
+        return read[2] + " number " + read[3] + " deleted from database"
 
     elif command == "DELETECLIENT":
 
-        return sys.argv[2] + " deleted from database"
+        return read[2] + " deleted from database"
+
+def auth_send(args):
+
+    global SESSION
+
+    SESSION = [args[0], args[1]]
+
+    return " ".join(args)
 
 def set_number(args):
 
-    return " ".join(args) + " " + SESSION
+    return '"%s" ' % (args[0]) + " ".join(args[1:]) + " " + " ".join(SESSION)
 
 
 def del_number(args):
 
-    return " ".join(args) + " " + SESSION
+    return '"%s" ' % (args[0]) + " ".join(args[1:]) + " " + " ".join(SESSION)
 
 
 def del_client(args):
 
-    return " ".join(args) + " " + SESSION
+    return '"%s"' % (args[0]) + " " + " ".join(SESSION)
 
 
 def get_number(args):
+
+    return '"%s"' % (args[0])
+
+def reverse(args):
 
     return " ".join(args)
 
 def no_command(args):
 
-    return " ".join(args)
+    return "command not found"
 
 
 def parse_command(argument, args):
@@ -119,43 +117,40 @@ def parse_command(argument, args):
         "DELETENUMBER": del_number,
         "DELETECLIENT": del_client,
         "GETNUMBER": get_number,
-        "REVERSE": get_number
+        "REVERSE": reverse,
+        "AUTH": auth_send
     }
 
     return switcher.get(argument, no_command)(args)
 
 def parse_arg(arg):
 
-    if arg[0] == "del" and len(arg) == 5:
+    if arg[0] == "-del" and len(arg) == 3:
         
         return "DELETENUMBER"
 
-    elif arg[0] == "del":
+    elif arg[0] == "-del":
 
         return "DELETECLIENT"
 
-    elif arg[0] == "set":
+    elif arg[0] == "-set":
 
         return "SETNUMBER"
 
-    elif arg[0] == "get":
+    elif arg[0] == "-auth":
 
+        return "AUTH"
+
+    else:
+    
         try:
             
-            eval(arg[1])
+            eval(arg[0])
             return "REVERSE"
 
         except Exception:
             
             return "GETNUMBER"
-
-    elif arg[0] == "auth":
-
-        return "AUTH"
-
-    else:
-
-        return "NOTFOUND"
 
 if __name__ == "__main__":
 
@@ -163,21 +158,44 @@ if __name__ == "__main__":
     server_address = (addr, port)
     sock.connect(server_address)
 
-    try:
-        
-        command = parse_arg(sys.argv[1:])
-        protocol =  command + " " + parse_command(command, sys.argv[2:])
-        
-        ciphertext = obj.encrypt(protocol)
-        sock.send(ciphertext)
+    while True:
 
-        data = sock.recv(4096)
-        msg = str(obj2.decrypt(data))[2:-3].split(" ")
+        obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+        obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
-        print(parse_response(command, msg[0], msg[1:]))
+        try:
+            
+            read = input("$ ")
+            read = shlex.split(read)
 
-    except Exception as e:  # excepção ao ler o socket, o cliente fechou ou morreu
+            if read[0] == "getphone":
 
-        print("Client disconnected")
-        print("Exception -> %s" % (e))
+                command = parse_arg(read[1:])
+
+                if command == "GETNUMBER" or command == "REVERSE":
+
+                    protocol =  command + " " + parse_command(command, read[1:])
+
+                else:
+
+                    protocol =  command + " " + parse_command(command, read[2:])
+
+                ciphertext = obj.encrypt(protocol)
+                sock.send(ciphertext)
+
+                data = sock.recv(4096)
+
+                msg = str(obj2.decrypt(data))[2:-3]
+                msg = shlex.split(msg)
+
+                print(parse_response(command, msg[0], msg[1:], read))
+
+            else:
+
+                print("Command not known")
+
+        except Exception as e:  # excepção ao ler o socket, o cliente fechou ou morreu
+
+            print("Client disconnected")
+            print("Exception -> %s" % (e))
            

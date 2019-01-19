@@ -2,18 +2,22 @@ import socket
 import select
 import pickle
 import os.path
-import secrets
-from datetime import datetime
+import shlex
+import sys
 import traceback  # para informação de excepções
 
 from Crypto.Cipher import AES
+from datetime import datetime
 
-
+addr = '127.0.0.1'
 SOCKET_LIST = []    # lista de sockets abertos
 RECV_BUFFER = 4096  # valor recomendado na doc. do python
 PORT = 5000
 
 nfile = 'numbers.db'
+
+NUMBERS = read_file(nfile)
+AUTH = {}
 
 def read_file(filename):
 
@@ -42,9 +46,6 @@ def write_to_file(data, filename):
         print('Opened file for writing')
     
         pickle.dump(data, f)
-
-NUMBERS = read_file(nfile)
-AUTH = {}
 
 def get_number(args):
 
@@ -130,7 +131,19 @@ def reverse(args):
     
     if len(names) > 0:
 
-        return "CLIENTHASNAMES " + " ".join(names) + '\n'
+        res = "CLIENTHASNAMES "
+
+        for i in range(len(names)):
+
+            if i != len(names) - 1:
+
+                res += '"%s" ' % (names[i])
+            
+            else:
+
+                res += '"%s"\n' % (names[i])
+
+        return res
 
     else:
 
@@ -176,59 +189,6 @@ def parse_command(argument, args):
 
     return switcher.get(argument, no_command)(args)
 
-def parse_command_data(command, args):
-
-    if command == "GETNUMBER":
-
-        name = " ".join(args)
-
-        return [name]
-
-    elif command == "DELETECLIENT":
-
-        password = args[-1]
-        username = args[-2]
-
-        name = ""
-
-        for i in range(len(args) - 2):
-
-            if i != len(args) - 3:
-
-                name += args[i] + " "
-            
-            else:
-
-                name += args[i]
-
-        return [name, username, password]
-
-    elif command == "SETNUMBER" or command == "DELETENUMBER":
-
-        number = args[-3]
-
-        password = args[-1]
-        username = args[-2]
-
-        name = ""
-
-        for i in range(len(args) - 3):
-
-            if i != len(args) - 4:
-
-                name += args[i] + " "
-            
-            else:
-
-                name += args[i]
-
-        return [name, number, username, password]
-
-    else:
-
-        return args
-
-
 def parse_data(data, sock):
 
     obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
@@ -242,17 +202,11 @@ def parse_data(data, sock):
 
     
     msg = str(obj2.decrypt(data))[2:-1].strip()
-
-    nmsg = msg.split(" ")
-
-    data = parse_command_data(nmsg[0], nmsg[1:])
-
-    print(nmsg[0])
-    print(data)
+    nmsg = shlex.split(msg)
 
     try:
 
-        result = parse_command(nmsg[0], data)
+        result = parse_command(nmsg[0], nmsg[1:])
         print(result)
         sock.send(obj.encrypt(result))
         print("Client %s: Message: '%s'" % (sock.getsockname(), msg))
@@ -327,4 +281,3 @@ if __name__ == "__main__":
                     
                     sock.close()
                     SOCKET_LIST.remove(sock)
-                    
