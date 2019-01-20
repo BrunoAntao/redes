@@ -12,11 +12,12 @@ from datetime import datetime
 addr = '127.0.0.1'
 SOCKET_LIST = []    # lista de sockets abertos
 RECV_BUFFER = 4096  # valor recomendado na doc. do python
-PORT = 5000
+PORT = eval(sys.argv[1])
+MASTERPORT = 5001
 
-nfile = 'numbers.db'
+MASTER = PORT == MASTERPORT
 
-
+nfile = sys.argv[2]
 
 def read_file(filename):
 
@@ -32,9 +33,11 @@ def read_file(filename):
 
     else:
 
-        with open(filename, "w+") as f:
+        with open(filename, "w+b") as f:
 
             print('Created file')
+
+            pickle.dump({}, f)
 
             return {}
 
@@ -177,6 +180,49 @@ def no_command(args):
 
     return 'INVALIDCOMMAND\n'
 
+def set_master(args):
+
+    if args[0] in NUMBERS:
+            NUMBERS[args[0]].append(args[1])
+    else:
+        NUMBERS[args[0]] = []
+        NUMBERS[args[0]].append(args[1])
+
+    write_to_file(NUMBERS, nfile)
+
+    return "NUMBERSET " + args[0] + " " + args[1] + '\n'
+
+def del_client_master(args):
+
+    if args[0] in NUMBERS:
+    
+        del NUMBERS[args[0]]
+        write_to_file(NUMBERS, nfile)
+
+        return "DELETED " + args[0] + '\n'
+
+    else:
+
+        return "NOTFOUND " + args[0] + '\n'
+
+def del_number_master(args):
+
+    if args[0] in NUMBERS:
+    
+        if args[1] in NUMBERS[args[0]]:
+
+            NUMBERS[args[0]].remove(args[1])
+            write_to_file(NUMBERS, nfile)
+
+            return "DELETED " + args[0] + " " + args[1] + '\n'
+
+        else:
+
+            return "NOTFOUND " + args[1] + '\n'
+    else:
+
+        return "NOTFOUND " + args[0] + '\n'
+
 def parse_command(argument, args):
 
     switcher = {
@@ -187,14 +233,55 @@ def parse_command(argument, args):
         "DELETECLIENT": del_client,
         "REVERSE": reverse,
         "AUTH": auth,
+        "MASTERREV": reverse,
+        "MASTERGET": get_number,
+        "MASTERSET": set_master,
+        "MASTERDELC": del_client_master,
+        "MASTERDELN": del_number_master
     }
 
     return switcher.get(argument, no_command)(args)
+
+def parse_to_server(command):
+
+    switcher = {
+
+        "SETNUMBER": "MASTERSET",
+        "DELETENUMBER": "MASTERDELN",
+        "DELETECLIENT": "MASTERDELC",
+        "REVERSE": "MASTERREV",
+        "GETNUMBER": "MASTERGET"
+    }
+
+    return switcher.get(command)
+
+def save(command, known, data):
+
+    global NUMBERS
+
+    if command == "GETNUMBER":
+
+        NUMBERS[known] = []
+
+        for i in data:
+
+            NUMBERS[known].append(i)
+
+    else:
+
+        for i in data:
+
+            NUMBERS[i] = known
+
+    write_to_file(NUMBERS, nfile)
 
 def parse_data(data, sock):
 
     obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
     obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+
+    obj3 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    obj4 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
     msg = str(obj2.decrypt(data))[2:-1].strip()
     nmsg = shlex.split(msg)
@@ -202,15 +289,70 @@ def parse_data(data, sock):
     try:
 
         result = parse_command(nmsg[0], nmsg[1:])
-        print(result)
-        sock.send(obj.encrypt(result))
+
+        if result.split(" ")[0] == "NOTFOUND" and not MASTER and (nmsg[0] == "GETNUMBER" or nmsg[0] == "REVERSE"):
+
+            new_com = parse_to_server(nmsg[0])
+
+            if nmsg[0] == "GETNUMBER":
+
+                protocol = new_com + ' "%s"' % (nmsg[1])
+
+            else:
+
+                protocol = new_com + ' ' + nmsg[1]
+
+            encrypted = obj4.encrypt(protocol)
+
+            master_sock.send(encrypted)
+            master_data = master_sock.recv(4096)
+
+            res = str(obj3.decrypt(master_data))[2:-3]
+
+            to_save = shlex.split(res)
+
+            save(nmsg[0], nmsg[1], to_save[1:])
+
+            cypher = obj.encrypt(res + '\n')
+
+            sock.send(cypher)
+            
+        elif not MASTER and (nmsg[0] == "SETNUMBER" or nmsg[0] == "DELETENUMBER" or nmsg[0] == "DELETECLIENT"):
+
+            new_com = parse_to_server(nmsg[0])
+
+            if nmsg[0] == "SETNUMBER":
+
+                protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
+
+            elif nmsg[0] == "DELETENUMBER":
+
+                protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
+
+            else:
+
+                protocol = new_com + ' "%s"' % (nmsg[1])
+
+            encrypted = obj4.encrypt(protocol)
+
+            master_sock.send(encrypted)
+            master_data = master_sock.recv(4096)
+
+            cypher = obj.encrypt(result)
+            sock.send(cypher)
+
+        else:
+
+            cypher = obj.encrypt(result)
+            sock.send(cypher)
+        
         print("Client %s: Message: '%s'" % (sock.getsockname(), msg))
 
     except Exception as e:
 
         print("Exception thrown: " + str(e))
-        sock.send("INVALIDCOMMAND\n".encode())
-          
+        sock.send(obj.encrypt("INVALIDCOMMAND\n"))
+
 if __name__ == "__main__":
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -219,8 +361,19 @@ if __name__ == "__main__":
     server_socket.listen(10)
     server_socket.setblocking(0) # o socket deixa de ser blocking
     
-    # Adicionamos o socket à lista de sockets a monitorizar
     SOCKET_LIST.append(server_socket)
+
+    if not MASTER:
+
+        global master_sock
+
+        master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_address = (addr, MASTERPORT)
+        master_sock.connect(server_address)
+
+        SOCKET_LIST.append(master_sock)
+
+    # Adicionamos o socket à lista de sockets a monitorizar
     
     print("Server started on port %d" % (PORT,))
 

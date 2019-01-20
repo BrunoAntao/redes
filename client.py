@@ -7,7 +7,7 @@ import ast
 import sys
 
 addr = '127.0.0.1'
-port = 5000
+port = eval(sys.argv[1])
 
 SESSION = []
 
