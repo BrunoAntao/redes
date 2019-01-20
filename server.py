@@ -16,6 +16,7 @@ PORT = eval(sys.argv[1])
 MASTERPORT = 5001
 
 MASTER = PORT == MASTERPORT
+SWITCH = False
 
 nfile = sys.argv[2]
 
@@ -223,6 +224,10 @@ def del_number_master(args):
 
         return "NOTFOUND " + args[0] + '\n'
 
+def pong_slave(args):
+
+    return "YES\n"
+
 def parse_command(argument, args):
 
     switcher = {
@@ -237,7 +242,8 @@ def parse_command(argument, args):
         "MASTERGET": get_number,
         "MASTERSET": set_master,
         "MASTERDELC": del_client_master,
-        "MASTERDELN": del_number_master
+        "MASTERDELN": del_number_master,
+        "ISALIVE": pong_slave
     }
 
     return switcher.get(argument, no_command)(args)
@@ -254,6 +260,26 @@ def parse_to_server(command):
     }
 
     return switcher.get(command)
+
+def ping_master():
+
+    try:
+
+        obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+        obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+
+        encrypted = obj.encrypt("ISALIVE")
+
+        master_sock.send(encrypted)
+        master_data = master_sock.recv(4096)
+
+        res = str(obj2.decrypt(master_data))[2:-3]
+
+        return res == "YES"
+
+    except Exception as e:
+        
+        return False
 
 def save(command, known, data):
 
@@ -391,6 +417,23 @@ if __name__ == "__main__":
         if len(rsocks) == 0: # timeout
             timecount += 5
 
+            if not MASTER:
+
+                if not ping_master():
+
+                    global new_master_socket
+
+                    new_master_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    new_master_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    new_master_socket.bind(("0.0.0.0", MASTERPORT))  # aceita ligações de qualquer lado
+                    new_master_socket.listen(10)
+                    new_master_socket.setblocking(0) # o socket deixa de ser blocking
+                    
+                    SOCKET_LIST.append(new_master_socket)
+
+                    MASTER = True
+                    SWITCH = True
+
             for k, _ in AUTH.items():
 
                 AUTH[k]['ttl'] -= 5
@@ -406,6 +449,14 @@ if __name__ == "__main__":
              
             if sock == server_socket: # há uma nova ligação
                 newsock, addr = server_socket.accept()
+                newsock.setblocking(0)
+                SOCKET_LIST.append(newsock)
+                
+                print("New client - %s" % (addr,))
+        
+            if SWITCH and sock == new_master_socket:
+
+                newsock, addr = new_master_socket.accept()
                 newsock.setblocking(0)
                 SOCKET_LIST.append(newsock)
                 
