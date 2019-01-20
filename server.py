@@ -7,7 +7,6 @@ import sys
 import traceback  # para informação de excepções
 
 from Crypto.Cipher import AES
-from datetime import datetime
 
 addr = '127.0.0.1'
 SOCKET_LIST = []    # lista de sockets abertos
@@ -15,7 +14,7 @@ RECV_BUFFER = 4096  # valor recomendado na doc. do python
 PORT = eval(sys.argv[1])
 MASTERPORT = 5001
 
-MASTER = PORT == MASTERPORT
+MASTER = (PORT == MASTERPORT)
 SWITCH = False
 
 nfile = sys.argv[2]
@@ -64,65 +63,83 @@ def get_number(args):
 
 def set_number(args):
 
-    if check_auth(args[2:]):
+    try:
 
-        if args[0] in NUMBERS:
-            NUMBERS[args[0]].append(args[1])
+        if check_auth(args[2:]):
+    
+            if args[0] in NUMBERS:
+                NUMBERS[args[0]].append(args[1])
+            else:
+                NUMBERS[args[0]] = []
+                NUMBERS[args[0]].append(args[1])
+
+            write_to_file(NUMBERS, nfile)
+
+            return "NUMBERSET " + args[0] + " " + args[1] + '\n'
+
         else:
-            NUMBERS[args[0]] = []
-            NUMBERS[args[0]].append(args[1])
+            
+            return "AUTHFAIL \n"
 
-        write_to_file(NUMBERS, nfile)
+    except:
 
-        return "NUMBERSET " + args[0] + " " + args[1] + '\n'
-
-    else:
-        
-        return "AUTHFAIL \n"
+         return "AUTHFAIL \n"
 
 def del_number(args):
 
-    if check_auth(args[2:]):
+    try:
+        
+        if check_auth(args[2:]):
+    
+            if args[0] in NUMBERS:
 
-        if args[0] in NUMBERS:
+                if args[1] in NUMBERS[args[0]]:
 
-            if args[1] in NUMBERS[args[0]]:
+                    NUMBERS[args[0]].remove(args[1])
+                    write_to_file(NUMBERS, nfile)
 
-                NUMBERS[args[0]].remove(args[1])
-                write_to_file(NUMBERS, nfile)
+                    return "DELETED " + args[0] + " " + args[1] + '\n'
 
-                return "DELETED " + args[0] + " " + args[1] + '\n'
+                else:
 
+                    return "NOTFOUND " + args[1] + '\n'
             else:
 
-                return "NOTFOUND " + args[1] + '\n'
+                return "NOTFOUND " + args[0] + '\n'
+
         else:
+        
+            return "AUTHFAIL \n"
 
-            return "NOTFOUND " + args[0] + '\n'
-
-    else:
-    
+    except:
+        
         return "AUTHFAIL \n"
 
 def del_client(args):
 
-    if check_auth(args[1:]):
+    try:
+        
+        if check_auth(args[1:]):
+    
+            if args[0] in NUMBERS:
 
-        if args[0] in NUMBERS:
+                del NUMBERS[args[0]]
+                write_to_file(NUMBERS, nfile)
 
-            del NUMBERS[args[0]]
-            write_to_file(NUMBERS, nfile)
+                return "DELETED " + args[0] + '\n'
 
-            return "DELETED " + args[0] + '\n'
+            else:
+
+                return "NOTFOUND " + args[0] + '\n'
 
         else:
 
-            return "NOTFOUND " + args[0] + '\n'
+            return "AUTHFAIL \n"
 
-    else:
-
+    except:
+        
         return "AUTHFAIL \n"
-
+        
 def reverse(args):
 
     names = []
@@ -182,6 +199,18 @@ def no_command(args):
     return 'INVALIDCOMMAND\n'
 
 def set_master(args):
+
+    if args[0] in NUMBERS:
+            NUMBERS[args[0]].append(args[1])
+    else:
+        NUMBERS[args[0]] = []
+        NUMBERS[args[0]].append(args[1])
+
+    write_to_file(NUMBERS, nfile)
+
+    return "NUMBERSET " + args[0] + " " + args[1] + '\n'
+
+def set_salve(args):
 
     if args[0] in NUMBERS:
             NUMBERS[args[0]].append(args[1])
@@ -268,7 +297,7 @@ def ping_master():
         obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
         obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
-        encrypted = obj.encrypt("ISALIVE")
+        encrypted = obj.encrypt("ISALIVE\n")
 
         master_sock.send(encrypted)
         master_data = master_sock.recv(4096)
@@ -301,15 +330,66 @@ def save(command, known, data):
 
     write_to_file(NUMBERS, nfile)
 
+def ask_master(sock, nmsg, encrypt_master, encrypt_key, decrypt_master):
+
+    new_com = parse_to_server(nmsg[0])
+
+    if nmsg[0] == "GETNUMBER":
+
+        protocol = new_com + ' "%s"' % (nmsg[1])
+
+    else:
+
+        protocol = new_com + ' ' + nmsg[1]
+
+    encrypted = encrypt_master.encrypt(protocol + '\n')
+
+    master_sock.send(encrypted)
+    master_data = master_sock.recv(RECV_BUFFER)
+
+    res = str(decrypt_master.decrypt(master_data))[2:-3]
+
+    to_save = shlex.split(res)
+
+    save(nmsg[0], nmsg[1], to_save[1:])
+
+    cypher = encrypt_key.encrypt(res + '\n')
+
+    sock.send(cypher)
+
+def notify_master(sock, nmsg, encrypt_master, encrypt_key, result):
+
+    new_com = parse_to_server(nmsg[0])
+
+    if nmsg[0] == "SETNUMBER":
+
+        protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
+
+    elif nmsg[0] == "DELETENUMBER":
+
+        protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
+
+    else:
+
+        protocol = new_com + ' "%s"' % (nmsg[1])
+
+    encrypted = encrypt_master.encrypt(protocol + '\n')
+
+    master_sock.send(encrypted)
+    master_data = master_sock.recv(4096)
+
+    cypher = encrypt_key.encrypt(result)
+    sock.send(cypher)
+
 def parse_data(data, sock):
 
-    obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
-    obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    encrypt_key = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    decrypt_key = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
-    obj3 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
-    obj4 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    decrypt_master = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+    encrypt_master = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
-    msg = str(obj2.decrypt(data))[2:-1].strip()
+    msg = str(decrypt_key.decrypt(data))[2:-3].strip()
     nmsg = shlex.split(msg)
 
     try:
@@ -318,58 +398,27 @@ def parse_data(data, sock):
 
         if result.split(" ")[0] == "NOTFOUND" and not MASTER and (nmsg[0] == "GETNUMBER" or nmsg[0] == "REVERSE"):
 
-            new_com = parse_to_server(nmsg[0])
-
-            if nmsg[0] == "GETNUMBER":
-
-                protocol = new_com + ' "%s"' % (nmsg[1])
-
-            else:
-
-                protocol = new_com + ' ' + nmsg[1]
-
-            encrypted = obj4.encrypt(protocol)
-
-            master_sock.send(encrypted)
-            master_data = master_sock.recv(4096)
-
-            res = str(obj3.decrypt(master_data))[2:-3]
-
-            to_save = shlex.split(res)
-
-            save(nmsg[0], nmsg[1], to_save[1:])
-
-            cypher = obj.encrypt(res + '\n')
-
-            sock.send(cypher)
+            ask_master(sock, nmsg, encrypt_master, encrypt_key, decrypt_master)
             
         elif not MASTER and (nmsg[0] == "SETNUMBER" or nmsg[0] == "DELETENUMBER" or nmsg[0] == "DELETECLIENT"):
 
-            new_com = parse_to_server(nmsg[0])
+            try:
+                
+                if result != "AUTHFAIL \n":
+    
+                    notify_master(sock, nmsg, encrypt_master, encrypt_key, result)
 
-            if nmsg[0] == "SETNUMBER":
+                else:
 
-                protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
+                    sock.send(encrypt_key.encrypt("AUTHFAIL\n"))
 
-            elif nmsg[0] == "DELETENUMBER":
-
-                protocol = new_com + ' "%s" ' % (nmsg[1]) + nmsg[2]
-
-            else:
-
-                protocol = new_com + ' "%s"' % (nmsg[1])
-
-            encrypted = obj4.encrypt(protocol)
-
-            master_sock.send(encrypted)
-            master_data = master_sock.recv(4096)
-
-            cypher = obj.encrypt(result)
-            sock.send(cypher)
+            except:
+                
+                sock.send(encrypt_key.encrypt("AUTHFAIL\n"))
 
         else:
 
-            cypher = obj.encrypt(result)
+            cypher = encrypt_key.encrypt(result)
             sock.send(cypher)
         
         print("Client %s: Message: '%s'" % (sock.getsockname(), msg))
@@ -377,7 +426,21 @@ def parse_data(data, sock):
     except Exception as e:
 
         print("Exception thrown: " + str(e))
-        sock.send(obj.encrypt("INVALIDCOMMAND\n"))
+        sock.send(encrypt_key.encrypt("INVALIDCOMMAND\n"))
+
+def switch_master():
+
+    global SOCKET_LIST
+
+    global new_master_socket
+
+    new_master_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    new_master_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    new_master_socket.bind(("0.0.0.0", MASTERPORT))  # aceita ligações de qualquer lado
+    new_master_socket.listen(10)
+    new_master_socket.setblocking(0) # o socket deixa de ser blocking
+    
+    SOCKET_LIST.append(new_master_socket)
 
 if __name__ == "__main__":
 
@@ -396,8 +459,6 @@ if __name__ == "__main__":
         master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_address = (addr, MASTERPORT)
         master_sock.connect(server_address)
-
-        SOCKET_LIST.append(master_sock)
 
     # Adicionamos o socket à lista de sockets a monitorizar
     
@@ -421,15 +482,7 @@ if __name__ == "__main__":
 
                 if not ping_master():
 
-                    global new_master_socket
-
-                    new_master_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    new_master_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    new_master_socket.bind(("0.0.0.0", MASTERPORT))  # aceita ligações de qualquer lado
-                    new_master_socket.listen(10)
-                    new_master_socket.setblocking(0) # o socket deixa de ser blocking
-                    
-                    SOCKET_LIST.append(new_master_socket)
+                    switch_master()
 
                     MASTER = True
                     SWITCH = True
@@ -454,7 +507,7 @@ if __name__ == "__main__":
                 
                 print("New client - %s" % (addr,))
         
-            if SWITCH and sock == new_master_socket:
+            elif SWITCH and sock == new_master_socket:
 
                 newsock, addr = new_master_socket.accept()
                 newsock.setblocking(0)

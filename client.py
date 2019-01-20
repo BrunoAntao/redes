@@ -8,6 +8,7 @@ import sys
 
 addr = '127.0.0.1'
 port = eval(sys.argv[1])
+buffer_size = 4096
 
 SESSION = []
 
@@ -85,16 +86,13 @@ def set_number(args):
 
     return '"%s" ' % (args[0]) + " ".join(args[1:]) + " " + " ".join(SESSION)
 
-
 def del_number(args):
 
     return '"%s" ' % (args[0]) + " ".join(args[1:]) + " " + " ".join(SESSION)
 
-
 def del_client(args):
 
     return '"%s"' % (args[0]) + " " + " ".join(SESSION)
-
 
 def get_number(args):
 
@@ -107,7 +105,6 @@ def reverse(args):
 def no_command(args):
 
     return "command not found"
-
 
 def parse_command(argument, args):
 
@@ -160,8 +157,8 @@ if __name__ == "__main__":
 
     while True:
 
-        obj = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
-        obj2 = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+        encrypt_key = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
+        decrypt_key = AES.new('k9rtbuyfgyug6dbn', AES.MODE_CFB, '6hghv998njnfbtsc')
 
         try:
             
@@ -180,12 +177,12 @@ if __name__ == "__main__":
 
                     protocol =  command + " " + parse_command(command, read[2:])
 
-                ciphertext = obj.encrypt(protocol)
+                ciphertext = encrypt_key.encrypt(protocol + '\n')
                 sock.send(ciphertext)
 
-                data = sock.recv(4096)
+                data = sock.recv(buffer_size)
 
-                msg = str(obj2.decrypt(data))[2:-3]
+                msg = str(decrypt_key.decrypt(data))[2:-3]
                 msg = shlex.split(msg)
 
                 print(parse_response(command, msg[0], msg[1:], read))

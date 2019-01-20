@@ -1,0 +1,106 @@
+Relatório de Redes
+
+Nuno Carrico nº 38489 Bruno Antão nº 37865
+
+O sistema implementa todos os aspetos pedidos:
+    - Sistema Base;
+    - Servidor de backup;
+    - Autenticação;
+    - Encriptação.
+
+O sistema base implementa o protocolo descrito da seguinte maneira:
+
+- Cliente: recebe como argumentos da linha de comandos o port ao qual se deve ligar. Abre um input para
+o utilizador escrever os comandos implementados e estes são convertidos para o protocolo a usar, ou seja, se se escrever:
+
+    $ getphone -del "Jose" 934923450
+
+fica
+
+    DELNUMBER "Jose" 934923450
+
+enquanto que
+
+    $ getphone -del "Jose"
+
+é convertido para
+
+    DELCLIENT "Jose"
+
+Após esta conversão, a mensagem é encriptada usando o método AES, implementado pelo package do python3 pycrypto, e enviada
+para o servidor. Quando se obtém a resposta do servidor, a mensagem recebida é desencriptada e convertida para o formato
+de output pretendido. Por exemplo, se a mensagem enviada for:
+
+    GETNUMBER "Jose"
+
+E como resposta:
+
+    CLIENTHASNUMBERS "Jose" 915780213 925954302
+
+O output será:
+
+    Jose has number 915780213
+    Jose has number 925954302
+
+- Servidor: recebe como argumentos da linha de comandos o port e o nome do ficheiro em que são guardados os dados. Ao
+receber uma mensagem, o servidor primeiro desencripta-a e depois consulta a sua base de dados para retirar a informação
+pretendida ou modifica a base de dados, estas ações dependem da mensagem recebida. No caso do comando ser válido e não
+existir nenhum erro na operação desse comando, é gerada a mensagem correspondente a esse comando junto da informação
+pretendida. Essa mensagem é encriptada e enviada para o cliente. Se não forem encontrados os dados pretendidos é enviada
+a mensagem  NOTFOUND e se o comando não for válido é enviado INVALIDCOMMAND.
+
+- Autenticação: para se poder usar comandos que modifiquem a base de dados, o cliente deve estar autenticado. Para tal, 
+o cliente deve usar o comando:
+
+    $ getphone -auth <username> <password>
+
+que o manterá autenticado durante sessenta segundos. Este comando envia uma mensagem ao servidor:
+
+    AUTH <username> <password>
+
+que responderá de uma das seguintes maneiras:
+
+    AUTHOK - se a autenticado foi bem sucedida;
+    AUTHED - se o cliente já está autenticado;
+    AUTHFAILED - caso falhe e/ou a password não coincida com a password guardada para o utilizador correspondente.
+
+Assim, quando uma mensagem de -set ou -del é enviada ao servidor é enviado junto o username e a password do cliente que, 
+por sua vez, serão usados pelo servidor para verificar se o cliente está autenticado. Para essa verificação, é comparada
+a password enviada com a password guardada no servidor para esse username. Se estiver autenticado, a ação pedida decorre
+sem problemas, caso contrário é enviada a mensagem AUTHFAIL para o cliente, não permitindo que a ação pedida se conclua.
+
+- Encriptação: como já referido, é usado o método AES para encriptar e desencriptar mensagens entre cliente e servidor,
+servidor e cliente e servidor servidor.
+
+- Sistema de redundância: para o sistema de redundância foi usado o seguinte protocolo de comunicação entre servidores:
+
+    MASTERGET <name>
+    MASTERREVERSE <number>
+    MASTERSET <name> <number>
+    MASTERDELC <name>
+    MASTERDELN <name> <number>
+    ISALIVE
+
+Quando o servidor slave não encontra na sua base de dados local a informação pedida, envia ao master uma das seguintes
+mensagens:
+
+    MASTERGET <name>
+    MASTERREVERSE <number>
+
+O master, por seu turno, responder-lhe-à com NOTFOUND caso não encontre essa informação na sua base de dados ou com a informação
+pedida, que para estes comandos seria:
+
+    CLIENTHASNUMBERS <number_1> ... <number_n>
+    CLIENTHASNAMES <name_1> ... <name_n>
+
+O slave guardará essa informação para pedidos futuros e envia ao cliente a resposta com a informação.
+Se for feita uma modificação à base de dados do slave, é enviada uma das seguintes mensagens para propagar as alterações
+ao master:
+
+    MASTERSET <name> <number>
+    MASTERDELC <name>
+    MASTERDELN <name> <number>
+
+Para verificar se o master está operacional, a cada cinco segundos o slave envia ao master a mensagem ISALIVE. Se a resposta
+for YES, tudo continua como estava, mas se não obtiver resposta, o slave toma o papel de master abrindo a porta 5001 para
+aceitar as ligações de clientes ou otros slaves, mantendo as que já tinha até então.

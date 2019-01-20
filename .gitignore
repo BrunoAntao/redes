@@ -2,3 +2,4 @@ auth.db
 numbers.db
 getphone
 .gitignore
+local*.db
